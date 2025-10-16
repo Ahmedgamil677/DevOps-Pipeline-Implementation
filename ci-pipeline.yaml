@@ -1,0 +1,88 @@
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    exclude:
+    - infra/
+    - docs/
+
+pr:
+  branches:
+    include:
+    - main
+    - develop
+
+variables:
+  buildConfiguration: 'Release'
+  solution: '**/*.sln'
+  projects: '**/*.csproj'
+  testProjects: '**/*Tests.csproj'
+
+stages:
+- stage: Build
+  displayName: 'Build and Test'
+  jobs:
+  - job: Build
+    displayName: 'Build Application'
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: UseDotNet@2
+      displayName: 'Install .NET 6 SDK'
+      inputs:
+        packageType: 'sdk'
+        version: '6.x'
+    
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore NuGet packages'
+      inputs:
+        command: 'restore'
+        projects: '$(projects)'
+    
+    - task: DotNetCoreCLI@2
+      displayName: 'Build Solution'
+      inputs:
+        command: 'build'
+        projects: '$(projects)'
+        arguments: '--configuration $(buildConfiguration) --no-restore'
+    
+    - task: DotNetCoreCLI@2
+      displayName: 'Run Unit Tests'
+      inputs:
+        command: 'test'
+        projects: '$(testProjects)'
+        arguments: '--configuration $(buildConfiguration) --collect:"XPlat Code Coverage" --logger trx'
+    
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'VSTest'
+        testResultsFiles: '**/*.trx'
+        failTaskOnFailedTests: true
+    
+    - task: PublishCodeCoverageResults@1
+      displayName: 'Publish Code Coverage'
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: '$(Agent.TempDirectory)/*/coverage.cobertura.xml'
+    
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish Application'
+      inputs:
+        command: 'publish'
+        projects: '$(projects)'
+        publishWebProjects: true
+        arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory) --no-build'
+        zipAfterPublish: true
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Build Artifacts'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'

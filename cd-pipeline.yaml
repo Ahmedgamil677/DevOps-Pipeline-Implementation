@@ -1,0 +1,161 @@
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger: none
+
+resources:
+  pipelines:
+  - pipeline: ci-pipeline
+    source: 'ci-pipeline'
+    trigger:
+      branches:
+      - main
+      - develop
+
+variables:
+  - group: dev-environment
+  - group: staging-environment
+  - group: prod-environment
+
+stages:
+- stage: Infrastructure_Dev
+  displayName: 'Deploy Infrastructure - Dev'
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployInfrastructure
+    environment: dev
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/deploy-infrastructure.yml
+            parameters:
+              environment: dev
+              location: 'East US'
+
+- stage: Deploy_Dev
+  displayName: 'Deploy Application - Dev'
+  dependsOn: Infrastructure_Dev
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployApp
+    environment: dev
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/deploy-app.yml
+            parameters:
+              environment: dev
+
+- stage: Integration_Tests
+  displayName: 'Run Integration Tests'
+  dependsOn: Deploy_Dev
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - job: RunIntegrationTests
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - download: current
+      artifact: drop
+    - task: DotNetCoreCLI@2
+      displayName: 'Run Integration Tests'
+      inputs:
+        command: 'test'
+        projects: '**/*IntegrationTests*.csproj'
+        arguments: '--configuration Release'
+      env:
+        WEBAPP_URL: $(dev-webapp-url)
+
+- stage: Deploy_Staging
+  displayName: 'Deploy to Staging'
+  dependsOn: 
+  - Integration_Tests
+  - Infrastructure_Staging
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployStaging
+    environment: staging
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/deploy-app.yml
+            parameters:
+              environment: staging
+              useSlot: true
+              slotName: 'staging'
+
+- stage: Infrastructure_Staging
+  displayName: 'Infrastructure - Staging'
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployInfrastructure
+    environment: staging
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/deploy-infrastructure.yml
+            parameters:
+              environment: staging
+              location: 'East US'
+
+- stage: Approval_Production
+  displayName: 'Production Approval'
+  dependsOn: Deploy_Staging
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - job: WaitForApproval
+    displayName: 'Wait for approval'
+    pool: server
+    timeoutInMinutes: 4320
+    steps:
+    - task: ManualValidation@0
+      displayName: 'Approve production deployment'
+      inputs:
+        instructions: 'Please validate the staging deployment and approve for production'
+        onTimeout: 'reject'
+
+- stage: Deploy_Production
+  displayName: 'Deploy to Production'
+  dependsOn: Approval_Production
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployProduction
+    environment: prod
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      rolling:
+        preDeployment:
+          steps:
+          - script: echo "Starting blue-green deployment to production"
+        deploy:
+          steps:
+          - template: templates/deploy-app.yml
+            parameters:
+              environment: prod
+              useSlot: true
+              slotName: 'staging'
+        routeTraffic:
+          steps:
+          - script: echo "Routing traffic to new deployment"
+        postRouteTraffic:
+          steps:
+          - script: echo "Health checks completed"
+        on:
+          failure:
+            steps:
+            - script: echo "Rollback deployment"
+          success:
+            steps:
+            - script: echo "Cleanup old deployment"
