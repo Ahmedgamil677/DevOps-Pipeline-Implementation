@@ -1,0 +1,3 @@
+subscription-id-dev: {your-dev-subscription-id}
+appName: myapp
+dev-webapp-url: https://myapp-dev.azurewebsites.net

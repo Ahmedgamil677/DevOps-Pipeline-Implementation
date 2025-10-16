@@ -1,0 +1,2 @@
+subscription-id-staging: {your-staging-subscription-id}
+appName: myapp

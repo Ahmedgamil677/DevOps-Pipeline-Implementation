@@ -1,0 +1,2 @@
+subscription-id-prod: {your-prod-subscription-id}
+appName: myapp
