@@ -1,0 +1,19 @@
+project-root/
+├── src/
+│   ├── WebApp/
+│   │   ├── Program.cs
+│   │   ├── WebApp.csproj
+│   │   └── Controllers/
+│   └── Tests/
+│       ├── UnitTests/
+│       └── IntegrationTests/
+├── infra/
+│   ├── main.json
+│   ├── parameters.dev.json
+│   ├── parameters.staging.json
+│   └── parameters.prod.json
+├── pipelines/
+│   ├── ci-pipeline.yml
+│   └── cd-pipeline.yml
+└── docs/
+    └── README.md

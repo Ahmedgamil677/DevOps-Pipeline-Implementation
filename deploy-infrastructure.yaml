@@ -1,0 +1,19 @@
+parameters:
+  environment: ''
+  location: ''
+
+steps:
+- task: AzureResourceManagerTemplateDeployment@3
+  displayName: 'Deploy ARM Template'
+  inputs:
+    deploymentScope: 'Resource Group'
+    azureResourceManagerConnection: 'AzureConnection-${{ parameters.environment }}'
+    subscriptionId: $(subscription-id-${{ parameters.environment }})
+    action: 'Create Or Update Resource Group'
+    resourceGroupName: 'rg-${{ parameters.environment }}-$(appName)'
+    location: '${{ parameters.location }}'
+    templateLocation: 'Linked artifact'
+    csmFile: '$(Pipeline.Workspace)/ci-pipeline/infra/main.json'
+    csmParametersFile: '$(Pipeline.Workspace)/ci-pipeline/infra/parameters.${{ parameters.environment }}.json'
+    deploymentMode: 'Incremental'
+    deploymentName: 'infra-deploy-${{ parameters.environment }}-$(Build.BuildId)'
